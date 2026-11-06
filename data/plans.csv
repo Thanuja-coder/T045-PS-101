@@ -1,0 +1,5 @@
+plan,monthly_fee,unit,desk_days,room_credits,advance_days,max_future_room_bookings,min_seats
+DAY_PASS,900.00,per day,,0,7,,
+FLEX,8000.00,per month,10,20,7,2,
+DEDICATED,15000.00,per month,UNLIMITED,40,30,,
+TEAM,12000.00,per seat per month,UNLIMITED,60,60,,3

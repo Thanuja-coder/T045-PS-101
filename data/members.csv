@@ -1,0 +1,21 @@
+member_id,member_name,company,plan,seats,billing_cycle_start,dedicated_desk,opening_carry_credits,freeze_days_used_2026,gstin
+M01,Abhishek Khan,,FLEX,1,2025-04-01,,0,0,
+M02,Farhan Singh,,FLEX,1,2025-12-01,,0,0,
+M03,Yamini Menon,Iyer Labs,TEAM,3,2025-12-01,,0,0,29CDKCD7075G1ZR
+M04,Manjula Agarwal,Desai Tech,TEAM,3,2025-09-01,,0,0,29ZSWCC5188K1ZJ
+M05,Shruthi Jain,,FLEX,1,2025-12-01,,0,0,
+M06,Anitha Setty,,FLEX,1,2025-08-01,,3,0,
+M07,Madhuri Gowda,,DEDICATED,1,2025-12-01,DD-01,6,0,
+M08,Meena Joshi,,FLEX,1,2025-12-01,,2,0,
+M09,Varsha Agarwal,,FLEX,1,2025-09-01,,0,0,
+M10,Spoorthi Khan,,FLEX,1,2025-12-01,,5,0,
+M11,Ravi Murthy,Bhat Design Co,DEDICATED,1,2025-04-01,DD-02,0,0,29YVPCR2731W1ZV
+M12,Harshitha Shetty,,FLEX,1,2025-07-01,,0,0,
+M13,Varsha Joshi,Murthy Analytics,FLEX,1,2025-03-01,,0,0,29BEWCV7875G1ZG
+M14,Shilpa Khan,,DAY_PASS,1,2025-10-01,,0,0,
+M15,Megha Chowdhury,,DAY_PASS,1,2025-07-01,,0,0,
+M16,Shilpa Agarwal,,FLEX,1,2025-10-01,,4,0,
+M17,Roopa Agarwal,,DEDICATED,1,2025-09-01,DD-03,8,0,
+M18,Lakshmi Yadav,Shetty Legal,TEAM,4,2025-08-01,,20,0,29DGZCP2701A1ZU
+M19,Joseph Acharya,Nair Design Co,FLEX,1,2025-03-01,,0,0,29TJXCW5205X1ZX
+M20,Pavan Iyer,,DAY_PASS,1,2025-05-01,,0,0,

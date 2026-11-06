@@ -1,0 +1,6 @@
+room_id,room_type,seats,credits_per_30min
+R-4A,4-seater,4,1
+R-4B,4-seater,4,1
+R-8A,8-seater,8,2
+R-8B,8-seater,8,2
+R-20,Board room,20,5
