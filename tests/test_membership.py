@@ -1,9 +1,10 @@
 
+from datetime import date
 import unittest
 from decimal import Decimal
 from unittest import result
 from src.data_loader import load_plans, load_members
-from src.membership import calculate_membership_allowance, validate_member, register_member
+from src.membership import calculate_membership_allowance, validate_member, register_member, calculate_upgrade_details
 
 
 class TestMembership(unittest.TestCase):
@@ -76,5 +77,98 @@ class TestMembership(unittest.TestCase):
         self.members["M07"], self.plans)
         self.assertEqual(result["desk_days"], "UNLIMITED")
 
+
+    def test_flex_to_dedicated_upgrade_fee(self):
+        member = self.create_member("M21", "FLEX", 1)
+
+        result = calculate_upgrade_details(
+            member,
+            "DEDICATED",
+            self.plans,
+            date(2026, 11, 16)
+        )
+
+        self.assertEqual(result["additional_fee"], Decimal("3500"))
+        self.assertEqual(result["additional_room_credits"], 10)
+
+    def test_upgrade_remaining_days_includes_effective_date(self):
+        member = self.create_member("M21", "FLEX", 1)
+
+        result = calculate_upgrade_details(
+            member,
+            "DEDICATED",
+            self.plans,
+            date(2026, 11, 16)
+        )
+
+        self.assertEqual(result["remaining_days"], 15)
+        self.assertEqual(result["days_in_month"], 30)
+
+    def test_upgrade_does_not_change_original_member(self):
+        member = self.create_member("M21", "FLEX", 1)
+
+        calculate_upgrade_details(
+            member,
+            "DEDICATED",
+            self.plans,
+            date(2026, 11, 16)
+        )
+
+        self.assertEqual(member["plan"], "FLEX")
+
+    def test_upgrade_on_last_day_of_30_day_month(self):
+        member = self.create_member("M21", "FLEX", 1)
+
+        result = calculate_upgrade_details(
+            member,
+            "DEDICATED",
+            self.plans,
+            date(2026, 11, 30)
+        )
+
+        self.assertEqual(result["remaining_days"], 1)
+        self.assertEqual(result["additional_fee"], Decimal("233"))
+        self.assertEqual(result["additional_room_credits"], 0)
+
+    def test_upgrade_on_last_day_of_february(self):
+        member = self.create_member("M21", "FLEX", 1)
+
+        result = calculate_upgrade_details(
+            member,
+            "DEDICATED",
+            self.plans,
+            date(2027, 2, 28)
+        )
+
+        self.assertEqual(result["days_in_month"], 28)
+        self.assertEqual(result["remaining_days"], 1)
+        self.assertEqual(result["additional_fee"], Decimal("250"))
+
+    def test_upgrade_on_leap_year_february(self):
+        member = self.create_member("M21", "FLEX", 1)
+
+        result = calculate_upgrade_details(
+            member,
+            "DEDICATED",
+            self.plans,
+            date(2028, 2, 29)
+        )
+
+        self.assertEqual(result["days_in_month"], 29)
+        self.assertEqual(result["remaining_days"], 1)
+        self.assertEqual(result["additional_fee"], Decimal("241"))
+
+    def test_flex_to_team_upgrade_uses_seat_based_allowance(self):
+        member = self.create_member("M21", "FLEX", 3)
+
+        result = calculate_upgrade_details(
+            member,
+            "TEAM",
+            self.plans,
+            date(2026, 11, 16)
+        )
+
+        self.assertEqual(result["additional_fee"], Decimal("14000"))
+        self.assertEqual(result["additional_room_credits"], 80)
 if __name__ == "__main__":
     unittest.main()
