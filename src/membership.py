@@ -1,6 +1,7 @@
 import calendar
 from decimal import Decimal, ROUND_HALF_UP
 import math
+from datetime import date, timedelta
 
 def validate_member(member,plans,members):
     member_id=member["member_id"]
@@ -133,3 +134,73 @@ def calculate_upgrade_details(member, new_plan_name, plans, effective_date):
         "additional_fee": additional_fee,
         "additional_room_credits": additional_credits
     }
+
+
+
+def calculate_freeze_allowance(member, plans, billing_month, freeze_events):
+    # Get the member's normal monthly allowance first
+    allowance = calculate_membership_allowance(member, plans)
+
+    year = billing_month.year
+    month = billing_month.month
+
+    days_in_month = calendar.monthrange(year, month)[1]
+
+    month_start = date(year, month, 1)
+    month_end = date(year, month, days_in_month)
+
+    # Find the freeze days that fall inside this billing month
+    frozen_dates = set()
+
+    for event in freeze_events.values():
+        if event["member_id"] != member["member_id"]:
+            continue
+
+        if event["event_type"] != "FREEZE":
+            continue
+
+        freeze_start = event["effective_date"]
+        freeze_days = event["freeze_days"]
+
+        # Ignore invalid historical freeze events
+        if freeze_days < 15 or freeze_days > 60:
+            continue
+
+        freeze_end = freeze_start + timedelta(days=freeze_days - 1)
+
+        if freeze_start.year != freeze_end.year:
+            continue
+
+        # Find the overlap between the freeze and this month
+        overlap_start = max(freeze_start, month_start)
+        overlap_end = min(freeze_end, month_end)
+
+        if overlap_start <= overlap_end:
+            current_date = overlap_start
+
+            while current_date <= overlap_end:
+                frozen_dates.add(current_date)
+                current_date += timedelta(days=1)
+
+    freeze_days_in_month = len(frozen_dates)
+    active_days = days_in_month - freeze_days_in_month
+
+    # Reduce room credits based on active days
+    room_credits = allowance["room_credits"]
+    allowance["room_credits"] = math.floor(
+        room_credits * active_days / days_in_month
+    )
+
+    # Reduce desk-days only when the plan has a numeric limit
+    desk_days = allowance["desk_days"]
+
+    if isinstance(desk_days, int):
+        allowance["desk_days"] = math.floor(
+            desk_days * active_days / days_in_month
+        )
+
+    allowance["freeze_days"] = freeze_days_in_month
+    allowance["active_days"] = active_days
+    allowance["days_in_month"] = days_in_month
+
+    return allowance

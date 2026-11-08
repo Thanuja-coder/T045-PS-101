@@ -4,7 +4,7 @@ import unittest
 from decimal import Decimal
 from unittest import result
 from src.data_loader import load_plans, load_members
-from src.membership import calculate_membership_allowance, validate_member, register_member, calculate_upgrade_details
+from src.membership import calculate_membership_allowance, validate_member, register_member, calculate_upgrade_details,calculate_freeze_allowance
 
 
 class TestMembership(unittest.TestCase):
@@ -170,5 +170,70 @@ class TestMembership(unittest.TestCase):
 
         self.assertEqual(result["additional_fee"], Decimal("14000"))
         self.assertEqual(result["additional_room_credits"], 80)
+
+    
+    def test_freeze_allowance_february_readme_example(self):
+        member = self.members["M01"]
+
+        freeze_events = {
+            "PE-04": {
+                "member_id": member["member_id"],
+                "event_type": "FREEZE",
+                "effective_date": date(2026, 1, 25),
+                "freeze_days": 15
+            }
+        }
+
+        result = calculate_freeze_allowance(
+            member,
+            self.plans,
+            date(2026, 2, 1),
+            freeze_events
+        )
+
+        self.assertEqual(result["freeze_days"], 8)
+        self.assertEqual(result["active_days"], 20)
+        self.assertEqual(result["room_credits"], 14)
+        self.assertEqual(result["desk_days"], 7)
+
+    def test_freeze_allowance_january_readme_example(self):
+        member = self.members["M01"]
+
+        freeze_events = {
+            "PE-04": {
+                "member_id": member["member_id"],
+                "event_type": "FREEZE",
+                "effective_date": date(2026, 1, 25),
+                "freeze_days": 15
+            }
+        }
+
+        result = calculate_freeze_allowance(
+            member,
+            self.plans,
+            date(2026, 1, 1),
+            freeze_events
+        )
+
+        self.assertEqual(result["freeze_days"], 7)
+        self.assertEqual(result["active_days"], 24)
+        self.assertEqual(result["room_credits"], 15)
+        self.assertEqual(result["desk_days"], 7)
+
+    def test_freeze_allowance_without_freeze(self):
+        member = self.members["M01"]
+
+        result = calculate_freeze_allowance(
+            member,
+            self.plans,
+            date(2026, 2, 1),
+            {}
+        )
+
+        self.assertEqual(result["room_credits"], 20)
+        self.assertEqual(result["desk_days"], 10)
+        self.assertEqual(result["freeze_days"], 0)
+        self.assertEqual(result["active_days"], 28)
+
 if __name__ == "__main__":
     unittest.main()

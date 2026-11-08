@@ -4,7 +4,8 @@ from datetime import datetime
 
 from src.data_loader import load_plans, load_members
 from src.plan_manager import process_upgrade, process_downgrade
-
+from datetime import datetime, date
+from src.plan_manager import process_upgrade, process_downgrade, process_freeze
 
 class TestPlanManager(unittest.TestCase):
 
@@ -80,7 +81,7 @@ class TestPlanManager(unittest.TestCase):
         self.assertEqual(event["requested_ts"], requested_ts)
         self.assertEqual(event["effective_date"], result["effective_date"])
 
-        
+
     def test_downgrade_across_year_boundary(self):
         member = load_members()["M07"].copy()
         requested_ts = datetime(2026, 12, 20, 11, 0)
@@ -109,5 +110,112 @@ class TestPlanManager(unittest.TestCase):
             self.events["PE-18"]["event_type"],
             "DOWNGRADE"
         )
+
+    def test_process_freeze_for_15_days(self):
+        member = self.member.copy()
+        requested_ts = datetime(2026, 11, 8, 10, 0)
+
+        result = process_freeze(
+            member, 15, date(2026, 11, 10),
+            requested_ts, "PE-19", self.events, []
+        )
+
+        self.assertEqual(result["freeze_days"], 15)
+        self.assertEqual(result["event_type"], "FREEZE")
+        self.assertIn("PE-19", self.events)
+
+    def test_process_freeze_for_60_days(self):
+        member = self.member.copy()
+
+        result = process_freeze(
+            member, 60, date(2026, 1, 1),
+            datetime(2026, 1, 1, 10, 0),
+            "PE-20", self.events, []
+        )
+
+        self.assertEqual(result["freeze_days"], 60)
+
+    def test_freeze_below_minimum_is_rejected(self):
+        with self.assertRaises(ValueError):
+            process_freeze(
+                self.member.copy(), 14, date(2026, 11, 10),
+                datetime(2026, 11, 8, 10, 0),
+                "PE-21", self.events, []
+            )
+
+    def test_freeze_above_maximum_is_rejected(self):
+        with self.assertRaises(ValueError):
+            process_freeze(
+                self.member.copy(), 61, date(2026, 11, 10),
+                datetime(2026, 11, 8, 10, 0),
+                "PE-22", self.events, []
+            )
+
+    def test_freeze_cannot_cross_calendar_year(self):
+        with self.assertRaises(ValueError):
+            process_freeze(
+                self.member.copy(), 15, date(2026, 12, 20),
+                datetime(2026, 12, 1, 10, 0),
+                "PE-23", self.events, []
+            )
+
+    def test_annual_freeze_limit_is_checked(self):
+        member = self.member.copy()
+
+        self.events["PE-24"] = {
+            "event_id": "PE-24",
+            "member_id": member["member_id"],
+            "requested_ts": datetime(2026, 2, 1, 10, 0),
+            "event_type": "FREEZE",
+            "effective_date": date(2026, 2, 1),
+            "new_plan": None,
+            "seats": member["seats"],
+            "freeze_days": 20
+        }
+
+        # Another 40 days is allowed
+        result = process_freeze(
+            member, 40, date(2026, 6, 1),
+            datetime(2026, 5, 20, 10, 0),
+            "PE-25", self.events, []
+        )
+
+        self.assertEqual(result["freeze_days"], 40)
+
+    def test_annual_freeze_limit_cannot_be_exceeded(self):
+        member = self.member.copy()
+
+        self.events["PE-26"] = {
+            "event_id": "PE-26",
+            "member_id": member["member_id"],
+            "requested_ts": datetime(2026, 2, 1, 10, 0),
+            "event_type": "FREEZE",
+            "effective_date": date(2026, 2, 1),
+            "new_plan": None,
+            "seats": member["seats"],
+            "freeze_days": 20
+        }
+
+        with self.assertRaises(ValueError):
+            process_freeze(
+                member, 41, date(2026, 6, 1),
+                datetime(2026, 5, 20, 10, 0),
+                "PE-27", self.events, []
+            )
+
+    def test_freeze_rejected_when_future_booking_exists(self):
+        member = self.member.copy()
+
+        future_booking = {
+            "member_id": member["member_id"],
+            "start_ts": datetime(2026, 11, 15, 10, 0)
+        }
+
+        with self.assertRaises(ValueError):
+            process_freeze(
+                member, 15, date(2026, 11, 20),
+                datetime(2026, 11, 8, 10, 0),
+                "PE-28", self.events, [future_booking]
+            )
 if __name__ == "__main__":
     unittest.main()
