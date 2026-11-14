@@ -47,14 +47,10 @@ def check_booking_no_show(booking_start, check_in_time, current_time):
 
     
 def calculate_no_show_fee(no_show_count):
-
-    # Check whether the no-show count is valid
     if no_show_count < 0:
         raise ValueError("No-show count cannot be negative")
 
-    # No fee is charged for the first no-show
-    if no_show_count <= 2:
+    if no_show_count <= 1:
         return 0
 
-    # A fee of Rs. 200 is charged from the second no-show
     return 200

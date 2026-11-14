@@ -1,110 +1,126 @@
+
 from datetime import timedelta
 
+
+class BookingValidationError(ValueError):
+    def __init__(self, message, rule_id):
+        super().__init__(message)
+        self.rule_id = rule_id
 
 
 def validate_room_booking(booking, rooms):
     room_id = booking["resource"]
 
-    # Check whether the requested room exists
     if room_id not in rooms:
-        raise ValueError(f"Room does not exist: {room_id}")
+        raise BookingValidationError(
+            f"Room does not exist: {room_id}", "BR-02"
+        )
 
     room = rooms[room_id]
-
     start_time = booking["start_ts"]
     end_time = booking["end_ts"]
 
-    # Check whether the end time is after the start time
     if end_time <= start_time:
-        raise ValueError("End time must be after start time")
+        raise BookingValidationError(
+            "End time must be after start time", "BR-02"
+        )
 
-    duration = end_time - start_time
-    duration_minutes = duration.total_seconds() / 60
+    duration_minutes = (end_time - start_time).total_seconds() / 60
 
-    # Check minimum booking duration
     if duration_minutes < 30:
-        raise ValueError("Minimum booking duration is 30 minutes")
+        raise BookingValidationError(
+            "Minimum booking duration is 30 minutes", "BR-02"
+        )
 
-    # Check 30-minute increments
     if duration_minutes % 30 != 0:
-        raise ValueError("Booking duration must be in 30-minute increments")
+        raise BookingValidationError(
+            "Booking duration must be in 30-minute increments", "BR-02"
+        )
 
-    # Check maximum booking duration
     if duration_minutes > 240:
-        raise ValueError("Maximum booking duration is 4 hours")
+        raise BookingValidationError(
+            "Maximum booking duration is 4 hours", "BR-02"
+        )
 
     attendees = booking["attendees"]
 
-    # Check room capacity
     if attendees is None or attendees < 1:
-        raise ValueError("Attendees must be at least 1")
+        raise BookingValidationError(
+            "Attendees must be at least 1", "BR-02"
+        )
 
     if attendees > room["seats"]:
-        raise ValueError("Attendees exceed room capacity")
+        raise BookingValidationError(
+            "Attendees exceed room capacity", "BR-02"
+        )
 
     return True
 
 
+def validate_desk_booking(booking):
+    if booking["end_ts"] <= booking["start_ts"]:
+        raise BookingValidationError(
+            "End time must be after start time", "BR-10"
+        )
+
+    return True
 
 
 def validate_booking_overlap(new_booking, accepted_bookings):
+    if new_booking["resource"] == "HOT_DESK":
+        return True
 
     for existing_booking in accepted_bookings:
-
-        # Check whether both bookings are for the same room
-        if new_booking["resource"] != existing_booking["resource"]:
+        if existing_booking["resource"] != new_booking["resource"]:
             continue
 
-        # Get the start and end times of both bookings
-        new_start = new_booking["start_ts"]
-        new_end = new_booking["end_ts"]
-
-        existing_start = existing_booking["start_ts"]
-        existing_end = existing_booking["end_ts"]
-
-        # Check whether the booking times overlap
-        if new_start < existing_end and new_end > existing_start:
-            raise ValueError(
+        if (
+            new_booking["start_ts"] < existing_booking["end_ts"]
+            and new_booking["end_ts"] > existing_booking["start_ts"]
+        ):
+            raise BookingValidationError(
                 f"Room {new_booking['resource']} is already booked "
-                f"for this time slot"
+                "for this time slot",
+                "BR-12"
             )
 
     return True
 
 
 def validate_advance_booking(booking, member, plans):
+    plan_name = member["plan"]
     requested_time = booking["requested_ts"]
     booking_start = booking["start_ts"]
 
-    plan_name = member["plan"]
     advance_days = plans[plan_name]["advance_days"]
-
     latest_allowed_time = requested_time + timedelta(days=advance_days)
 
     if booking_start > latest_allowed_time:
-        raise ValueError(
+        raise BookingValidationError(
             f"{plan_name} members can book only "
-            f"{advance_days} days in advance"
+            f"{advance_days} days in advance",
+            "BR-06"
         )
 
     return True
-def validate_future_booking_limit(booking, member, accepted_bookings, plans):
-    plan_name = member["plan"]
 
-    max_bookings = plans[plan_name]["max_future_room_bookings"]
 
-    # Plans without a booking limit can make future room bookings
-    if max_bookings is None:
+def validate_future_booking_limit(
+    booking, member, accepted_bookings, plans
+):
+    if member["plan"] != "FLEX":
         return True
 
-    # This limit applies only to room bookings
     if booking["resource"] == "HOT_DESK":
         return True
 
-    requested_time = booking["requested_ts"]
     member_id = member["member_id"]
-
+    requested_time = booking["requested_ts"]
     future_room_bookings = 0
+
+    max_bookings = plans["FLEX"].get(
+        "max_future_room_bookings", 2
+    )
 
     for existing_booking in accepted_bookings:
         if existing_booking["member_id"] != member_id:
@@ -117,19 +133,20 @@ def validate_future_booking_limit(booking, member, accepted_bookings, plans):
             future_room_bookings += 1
 
     if future_room_bookings >= max_bookings:
-        raise ValueError(
-            f"{plan_name} members can have a maximum of "
-            f"{max_bookings} future room bookings"
+        raise BookingValidationError(
+            "FLEX members can have a maximum of "
+            f"{max_bookings} future room bookings",
+            "BR-06"
         )
 
     return True
+
 
 def validate_booking_freeze(booking, member, freeze_events):
     member_id = member["member_id"]
     booking_date = booking["start_ts"].date()
 
     for event in freeze_events:
-
         if event["member_id"] != member_id:
             continue
 
@@ -138,20 +155,21 @@ def validate_booking_freeze(booking, member, freeze_events):
 
         freeze_start = event["effective_date"]
         freeze_days = event["freeze_days"]
-
         freeze_end = freeze_start + timedelta(days=freeze_days - 1)
 
         if freeze_start <= booking_date <= freeze_end:
-            raise ValueError("Member is currently frozen")
+            raise BookingValidationError(
+                "Member is currently frozen", "BR-09"
+            )
 
     return True
+
 
 def validate_freeze_start(freeze_event, accepted_bookings):
     member_id = freeze_event["member_id"]
     requested_time = freeze_event["requested_ts"]
 
     for booking in accepted_bookings:
-
         if booking["member_id"] != member_id:
             continue
 
@@ -164,59 +182,50 @@ def validate_freeze_start(freeze_event, accepted_bookings):
 
 
 def validate_hot_desk_capacity(booking, accepted_bookings):
-    # Only check capacity for hot-desk bookings
     if booking["resource"] != "HOT_DESK":
         return True
 
     new_start = booking["start_ts"]
     new_end = booking["end_ts"]
-
     occupied_desks = 0
 
     for existing in accepted_bookings:
-        # Count only existing hot-desk bookings
-        if existing["resource"] == "HOT_DESK":
-            existing_start = existing["start_ts"]
-            existing_end = existing["end_ts"]
+        if existing["resource"] != "HOT_DESK":
+            continue
 
-            # Check whether the bookings overlap
-            if new_start < existing_end and new_end > existing_start:
-                occupied_desks += 1
+        if (
+            new_start < existing["end_ts"]
+            and new_end > existing["start_ts"]
+        ):
+            occupied_desks += 1
 
-    # The floor has a maximum capacity of 40 shared desks
     if occupied_desks >= 40:
-        raise ValueError("Hot desk capacity is full")
+        raise BookingValidationError(
+            "Hot desk capacity is full", "BR-10"
+        )
 
     return True
 
 
+def validate_booking(
+    booking, member, rooms, plans, accepted_bookings, freeze_events
+):
+    # Basic booking and capacity checks.
+    if booking["resource"] == "HOT_DESK":
+        validate_desk_booking(booking)
+        validate_hot_desk_capacity(booking, accepted_bookings)
+    else:
+        validate_room_booking(booking, rooms)
 
-def validate_booking(booking, member, rooms, plans,
-                     accepted_bookings, freeze_events):
-
-    # 1. Check whether the resource is already booked
+    # Apply the booking rejection checks.
     validate_booking_overlap(booking, accepted_bookings)
 
-    # 2. Check the advance booking limit of the member's plan
     validate_advance_booking(booking, member, plans)
 
-    # 3. Check whether the member is frozen
-    validate_booking_freeze(booking, member, freeze_events)
-
-    # 4. Check the maximum number of future room bookings
     validate_future_booking_limit(
         booking, member, accepted_bookings, plans
     )
 
-    # 5. Perform resource-specific validation
-    if booking["resource"] == "HOT_DESK":
-
-        # Check whether a shared hot desk is available
-        validate_hot_desk_capacity(booking, accepted_bookings)
-
-    else:
-
-        # Validate the meeting-room booking
-        validate_room_booking(booking, rooms)
+    validate_booking_freeze(booking, member, freeze_events)
 
     return True

@@ -235,5 +235,21 @@ class TestMembership(unittest.TestCase):
         self.assertEqual(result["freeze_days"], 0)
         self.assertEqual(result["active_days"], 28)
 
+    def test_upgrade_on_last_day_of_31_day_month(self):
+        member = self.create_member("M21", "FLEX", 1)
+
+        result = calculate_upgrade_details(
+            member,
+            "DEDICATED",
+            self.plans,
+            date(2026, 12, 31)
+        )
+
+        self.assertEqual(result["days_in_month"], 31)
+        self.assertEqual(result["remaining_days"], 1)
+        self.assertEqual(result["additional_fee"], Decimal("226"))
+        self.assertEqual(result["additional_room_credits"], 0)
+
+
 if __name__ == "__main__":
     unittest.main()

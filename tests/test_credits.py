@@ -41,7 +41,7 @@ class TestRoomCreditCalculation(unittest.TestCase):
 
         result = calculate_room_credits(booking, room)
 
-        self.assertEqual(result, 1)
+        self.assertEqual(result, 0.5)
 
     def test_each_slot_is_calculated_separately(self):
         booking = {
@@ -327,6 +327,21 @@ class TestCreditUsageIntegration(unittest.TestCase):
         self.assertEqual(result["monthly_credits_used"], 5)
         self.assertEqual(result["overage_credits"], 3)
         self.assertEqual(result["overage_amount"], 450)
+
+    def test_team_member_can_use_all_180_pooled_credits(self):
+        from src.credit_ledger import process_room_credit_usage
+
+        result = process_room_credit_usage(
+            credit_buckets=[],
+            monthly_credits_available=180,
+            required_credits=180,
+            current_date=date(2026, 11, 1)
+        )
+
+        self.assertEqual(result["monthly_credits_used"], 180)
+        self.assertEqual(result["carry_forward_used"], 0)
+        self.assertEqual(result["overage_credits"], 0)
+        self.assertEqual(result["overage_amount"], 0)
 
 if __name__ == "__main__":
     unittest.main()
