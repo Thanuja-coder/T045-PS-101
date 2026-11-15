@@ -1,161 +1,203 @@
-# T045-PS-101
-Co-working Membership, Desk/Room Booking and Credit Ledger Engine
+# PS-101 – Co-working Membership, Desk/Room Booking and Credit Ledger Engine
 
+**Team:** T045  
+**Project ID:** T045-PS-101  
+**Section:** CSDS B  
+**Language:** Python 3.10+
 
-# T045-PS-101
-## Co-working Membership, Desk/Room Booking and Credit Ledger Engine
+## 1. Project Overview
 
-**Team ID:** T045  
-**Team Members:** Thanuja Madhu Chandre Gowda and Thoshin S  
-**Section:** CSDS B
+This project is a command-file-driven backend system for managing memberships, desk and meeting-room bookings, room credits, plan changes, cancellations, freezes and monthly invoices for a co-working space.
 
-### 1. Introduction
+The application reads member, plan, room, booking and plan-event data from CSV files. It then processes commands in the order provided in `data/commands.txt`, applies the project business rules and generates CSV output files.
 
-For this capstone project, we were asked to develop a backend engine for managing a co-working space.
+The project is implemented as a Python backend. It does not include a web interface or a payment gateway.
 
-When I understood the problem statement, I realised that managing a co-working space involves more than just booking desks and meeting rooms. The system also needs to manage different membership plans, room credits, booking restrictions, cancellations, plan changes and monthly invoices.
+## 2. Main Features
 
-The main idea of our project is to process the commands provided through input files and generate the required booking decisions, credit ledgers and invoices.
+- Load membership plans, members, rooms, bookings and plan events from input files.
+- Validate desk and meeting-room booking requests.
+- Check room capacity, booking duration, overlapping bookings and advance-booking limits.
+- Calculate room-credit usage, including peak-time and weekend rates.
+- Maintain monthly credit balances, FIFO credit usage, carry-forward credits and expiry.
+- Process membership upgrades, downgrades and freezes.
+- Apply cancellation refunds and no-show rules.
+- Calculate room and desk overage charges.
+- Generate monthly invoices with GST and applicable late-payment interest.
+- Generate booking decisions, credit-ledger records and invoice reports.
 
-This is a command-file-driven Python project. It does not have a user interface or a payment gateway.
+## 3. Technologies Used
 
-### 2. Understanding the Project Logic
+- **Python 3.10+** – application logic and file processing.
+- **CSV files** – input data and generated reports.
+- **Python `unittest` / pytest** – automated testing.
 
-I divided the project into different modules so that each part handles a particular responsibility.
+The application logic primarily uses Python's standard library.
 
-**Membership Plans**
+## 4. Project Structure
 
-The system supports four types of plans:
+```text
+T045-PS-101/
+│
+├── data/
+│   ├── members.csv
+│   ├── plans.csv
+│   ├── rooms.csv
+│   ├── bookings.csv
+│   ├── plan_events.csv
+│   ├── commands.txt
+│   └── README.md
+│
+├── src/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── data_loader.py
+│   ├── command_parser.py
+│   ├── membership.py
+│   ├── booking.py
+│   ├── credit_ledger.py
+│   ├── plan_manager.py
+│   ├── cancellation.py
+│   ├── invoice.py
+│   └── reports.py
+│
+├── tests/
+│   ├── test_booking.py
+│   ├── test_cancellation.py
+│   ├── test_credits.py
+│   ├── test_invoices.py
+│   ├── test_membership.py
+│   ├── test_plan_manager.py
+│   └── test_edge_cases.py
+│
+├── outputs/
+│   ├── booking_decisions.csv
+│   ├── credit_ledger.csv
+│   ├── invoices.csv
+│   └── bookings_register.csv
+│
+├── docs/
+│   ├── design_document.md
+│   └── decision_log.md
+│
+├── README.md
+└── requirements.txt
+```
 
-- **DAY_PASS:** A daily membership without room credits.
-- **FLEX:** Includes 10 desk-days and 20 room credits per month.
-- **DEDICATED:** Provides unlimited desk usage and 40 room credits.
-- **TEAM:** Provides unlimited desk usage and 60 room credits per seat, with pooled credits.
+The `outputs/` directory contains files generated when the application is run. The exact files present may depend on the commands and reports produced by the current implementation.
 
-Each plan has its own fee, allowances and booking restrictions.
+## 5. Input Files
 
-**Booking Management**
+The application reads its input data from the `data/` directory.
 
-Members can book hot desks and meeting rooms for specific dates and time periods.
-
-Before accepting a booking, the system checks the applicable business rules. These include booking overlaps, advance booking limits, membership freeze status, unpaid invoices and credit availability.
-
-The order of these checks is important because the first failed check determines the rejection reason.
-
-**Room Credit Calculation**
-
-Meeting room bookings consume credits based on the room capacity and booking duration.
-
-The system also considers peak hours and weekend pricing. For example, a weekday booking that crosses into peak hours is calculated using its individual half-hour slots rather than applying one rate to the entire booking.
-
-**Credit Ledger and Carry-Forward**
-
-The credit ledger keeps track of the credits available to each member.
-
-Credits are granted according to the membership plan. When a member uses a meeting room, the required credits are consumed from the ledger.
-
-Unused room credits can be carried forward to the next cycle, subject to the 25% limit. Carried-forward credits are consumed before current-cycle credits, following the FIFO approach. Credits also expire according to the specified cycle rule.
-
-If the available credits are not sufficient, the applicable overage is recorded for invoicing.
-
-**Plan Changes and Membership Freeze**
-
-The system handles plan upgrades, downgrades and membership freezes.
-
-An upgrade takes effect on the same day, and the additional fee and credits are calculated proportionally. A downgrade takes effect from the next billing cycle.
-
-During a freeze period, members cannot make bookings. The applicable fee waiver is calculated based on the freeze duration, and credits do not accrue during that period.
-
-**Cancellation and No-Show**
-
-When a member cancels a room booking, the refund depends on the time remaining before the booking starts.
-
-The system also checks whether a member has checked in within the allowed time. If the member does not check in, the booking is treated according to the no-show rules.
-
-**Invoice Generation**
-
-Monthly invoices are generated for members based on their membership and usage.
-
-The invoice calculation considers plan fees, applicable overage charges, no-show fees, freeze waivers and GST. Late payment interest is also handled according to the given business rules.
-
-### 3. Project Structure
-
-The project is divided into the following files:
-
-| File / Folder | Purpose |
+| File | Description |
 |---|---|
-| `main.py` | Main program that connects the different modules and processes commands. |
-| `data_loader.py` | Loads the input CSV files. |
-| `command_parser.py` | Reads and processes commands from the command file. |
-| `booking.py` | Handles booking validation and booking-related rules. |
-| `credit_ledger.py` | Manages room credits, consumption, carry-forward and overage. |
-| `membership.py` | Handles membership plans and member-related details. |
-| `plan_manager.py` | Handles upgrades, downgrades and membership freezes. |
-| `cancellation.py` | Handles cancellations and no-show rules. |
-| `invoice.py` | Handles invoice calculations and charges. |
-| `reports.py` | Generates the required CSV reports. |
-| `data/` | Contains the input files. |
-| `outputs/` | Contains the generated output files. |
-| `tests/` | Contains test cases for checking the project logic. |
+| `members.csv` | Member details, membership plan, seat count and opening credit information |
+| `plans.csv` | Plan fees, desk-day allowances, room-credit allowances and booking limits |
+| `rooms.csv` | Meeting-room details, capacity and credit rates |
+| `bookings.csv` | Booking request details |
+| `plan_events.csv` | Membership upgrade, downgrade and freeze events |
+| `commands.txt` | Commands that determine the order in which operations are processed |
+| `README.md` | Sample data pack format and planted-scenario reference |
 
-### 4. Technologies Used
+Commands in `commands.txt` are processed in file order. Refer to `data/README.md` for the sample data format, command arguments, output column definitions and planted scenarios.
 
-- Python 3.10+
-- CSV files for input and output
-- Pytest for testing
+## 6. Setup and Installation
 
-### 5. How to Run the Project
+### Prerequisites
 
-**Step 1:** Install Python 3.10 or above.
+- Python 3.10 or later
+- pip
+- Git (if cloning the repository)
 
-**Step 2:** Open the project folder in VS Code.
+### Clone the repository
 
-**Step 3:** Open the terminal in the project root directory.
+```bash
+git clone https://github.com/Thanuja-coder/T045-PS-101.git
+cd T045-PS-101
+```
 
-**Step 4:** Install the required package:
+### Create and activate a virtual environment
+
+**Windows PowerShell:**
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+**macOS / Linux:**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### Install the testing dependency
+
+If `requirements.txt` is present and lists the project dependencies, install them using:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**Step 5:** Run the main program:
+If pytest is not installed in the environment, install it using:
+
+```bash
+python -m pip install pytest
+```
+
+## 7. How to Run the Project
+
+Run the following command from the **root project directory**:
 
 ```bash
 python -m src.main
 ```
 
-The program reads the input data, processes the commands and generates the required output files inside the `outputs/` folder.
+The application loads the input data, processes the commands and generates the output files in the `outputs/` directory.
 
-### 6. Generated Output Files
+A successful run displays a data-loading confirmation and the number of members, bookings and commands loaded. Booking and command results are also printed while processing.
 
-The project generates three main CSV files:
+## 8. Generated Output Files
 
-- **booking_decisions.csv:** Contains booking decisions such as ACCEPT and REJECT, along with the relevant booking details and rejection reasons.
-- **credit_ledger.csv:** Maintains the member-wise credit transactions, including credit grants, consumption, carry-forward and overage.
-- **invoices.csv:** Contains monthly invoice details, including applicable charges, GST and the final amount.
+| Output file | Description |
+|---|---|
+| `booking_decisions.csv` | Records booking, check-in, cancellation and no-show decisions |
+| `credit_ledger.csv` | Records credit grants, usage, refunds, carry-forward and related ledger movements |
+| `invoices.csv` | Contains monthly invoice details, charges, GST, totals and late interest |
+| `bookings_register.csv` | Contains the booking register/report generated by the application |
 
-The project also supports commands to print booking registers, individual member ledgers and monthly invoices.
+The three main evaluation CSV files are `booking_decisions.csv`, `credit_ledger.csv` and `invoices.csv`. Their column order and formats should follow the sample data pack specification in `data/README.md`.
 
-### 7. Testing
+## 9. Running the Tests
 
-I used test cases to check the different parts of the project, including booking validation, credit calculations, carry-forward, cancellations, plan changes, freezes and invoice calculations.
-
-After completing the implementation and report generation, I ran the complete test suite.
-
-**Final test result: 139 tests passed.**
-
-To run the tests:
+Run the complete test suite from the root project directory:
 
 ```bash
-pytest
+python -m pytest
 ```
 
-### 8. What I Learned
+To run an individual test module:
 
-Working on this project helped me understand how different business rules are connected in a backend system.
+```bash
+python -m pytest tests/test_booking.py
+```
 
-One of the important parts I worked on was the credit ledger, especially how carried-forward credits are consumed before current-cycle credits.
+The test suite covers the project's membership, booking, credit-ledger, cancellation, plan-management, invoice and edge-case behaviour.
 
-I also understood how peak-hour pricing is calculated when a booking covers both peak and off-peak time slots. Apart from this, I got practical experience with Python modules, CSV file handling, command processing and writing test cases.
+## 10. Business Rules and Design Documents
 
-Overall, this project helped me understand how to convert a given problem statement into a working backend application while following the specified business rules.
+The system follows the business rules provided in the PS-101 project brief and the documented clarifications for the sample data pack.
+
+Refer to:
+
+- **Design document:** architecture, domain design, business-rule register and diagrams.
+- **Decision log:** implementation decisions and recorded assumptions.
+- **Sample data README:** input formats, command definitions, expected evaluation output formats and planted scenarios.
+
+## 11. Team
+
+**Team ID:** T045  
+**Project ID:** T045-PS-101  
+**Section:** CSDS B

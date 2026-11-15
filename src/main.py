@@ -1,4 +1,5 @@
 
+import math
 from pathlib import Path
 
 from src.reports import (
@@ -16,9 +17,11 @@ from src.data_loader import (
     load_plan_events
 )
 from src.command_parser import load_commands
+
 from src.booking import BookingValidationError
 
-from datetime import datetime,date
+from datetime import datetime,date,timedelta
+
 from src.cancellation import (
     calculate_cancellation_refund,
     check_booking_no_show
@@ -63,15 +66,14 @@ def create_monthly_credit_ledger(member, plans, billing_month, freeze_events):
     )
 
     carry_forward_buckets = []
-
-    opening_credits = member["opening_carry_credits"]
     
+    opening_credits = member["opening_carry_credits"]
     if opening_credits > 0 and billing_month == date(2026, 1, 1):
+        previous_month = billing_month - timedelta(days=1)
         carry_forward_buckets.append({
         "credits": opening_credits,
-        "created_date": billing_month
+        "created_date": previous_month.replace(day=1)
     })
-
     ledger = {
         "member_id": member["member_id"],
         "billing_month": billing_month,
@@ -93,7 +95,9 @@ def create_carry_forward_bucket(ledger, billing_month):
         ledger["monthly_credits"]
     )
 
-    carry_credits = min(unused_credits, carry_limit)
+    carry_credits = math.floor(
+        min(unused_credits, carry_limit)
+)
 
     if carry_credits <= 0:
         return None
@@ -165,6 +169,7 @@ def process_commands(
     room_overage_records = {}
 
     upgrade_charges = {}
+    monthly_plan_fees = {}
     freeze_records = []
     invoices = []
 
@@ -466,6 +471,7 @@ def process_commands(
                         "BR-07"
                     )
 
+        
         # --------------------------------------------------
         # PLAN EVENT
         # --------------------------------------------------
@@ -477,14 +483,6 @@ def process_commands(
 
             try:
                 if event["event_type"] == "UPGRADE":
-                    upgrade_details = process_upgrade(
-                        member,
-                        event["new_plan"],
-                        plans,
-                        event["requested_ts"],
-                        event_id,
-                        events
-                    )
 
                     billing_month = date(
                         event["requested_ts"].year,
@@ -497,6 +495,75 @@ def process_commands(
                         billing_month
                     )
 
+                    # Preserve the original plan fee before upgrading.
+                    original_plan_fee = calculate_membership_allowance(
+                        member,
+                        plans
+                    )["plan_fee"]
+
+                    # Create the ledger before changing the member's plan.
+                    # This ensures the original plan's credits are granted.
+                    if charge_key not in credit_ledgers:
+
+                        credit_ledgers[charge_key] = (
+                            create_monthly_credit_ledger(
+                                member,
+                                plans,
+                                billing_month,
+                                active_freeze_events
+                            )
+                        )
+
+                        ledger = credit_ledgers[charge_key]
+
+                        record_ledger_entry(
+                            credit_ledger_entries,
+                            ledger,
+                            billing_month,
+                            "GRANT",
+                            "MONTHLY_PLAN",
+                            ledger["monthly_credits"]
+                        )
+
+                    ledger = credit_ledgers[charge_key]
+
+                    # Process the upgrade and calculate the prorated difference.
+                    upgrade_details = process_upgrade(
+                        member,
+                        event["new_plan"],
+                        plans,
+                        event["requested_ts"],
+                        event_id,
+                        events
+                    )
+
+                    # Add only the additional prorated room credits.
+                    additional_credits = (
+                        upgrade_details["additional_room_credits"]
+                    )
+
+                    ledger["monthly_credits"] += additional_credits
+
+                    ledger["remaining_monthly_credits"] += (
+                        additional_credits
+                    )
+
+                    # Record the additional credits in the ledger.
+                    if additional_credits > 0:
+                        record_ledger_entry(
+                            credit_ledger_entries,
+                            ledger,
+                            event["requested_ts"],
+                            "UPGRADE",
+                            event_id,
+                            additional_credits
+                        )
+
+                    # Preserve the original plan fee for this month.
+                    if charge_key not in monthly_plan_fees:
+                        monthly_plan_fees[charge_key] = original_plan_fee
+
+                    # Add the upgrade charge to this month's invoice.
                     upgrade_charges[charge_key] = (
                         upgrade_charges.get(charge_key, 0)
                         + upgrade_details["additional_fee"]
@@ -505,6 +572,7 @@ def process_commands(
                     print("UPGRADE:", event_id, "processed")
 
                 elif event["event_type"] == "DOWNGRADE":
+
                     process_downgrade(
                         member,
                         event["new_plan"],
@@ -517,6 +585,7 @@ def process_commands(
                     print("DOWNGRADE:", event_id, "scheduled")
 
                 elif event["event_type"] == "FREEZE":
+
                     previous_events = {
                         key: value
                         for key, value in events.items()
@@ -543,7 +612,8 @@ def process_commands(
                         "effective_date": event["effective_date"],
                         "freeze_days": event["freeze_days"],
                         "monthly_plan_fee": calculate_membership_allowance(
-                            member, plans
+                            member,
+                            plans
                         )["plan_fee"]
                     })
 
@@ -551,6 +621,7 @@ def process_commands(
 
             except ValueError as error:
                 print("REJECT PLAN EVENT:", event_id, error)
+
 
         # --------------------------------------------------
         # BOOK
@@ -847,7 +918,7 @@ def process_commands(
                     )
 
                     add_booking_decision(
-                        cycle_close_time,
+                        booking["start_ts"] + timedelta(minutes=15),
                         booking,
                         "NO_SHOW",
                         "REJECT",
@@ -895,14 +966,11 @@ def process_commands(
                 # Create next month's ledger if it does not exist.
                 if next_ledger_key not in credit_ledgers:
                     credit_ledgers[next_ledger_key] = create_monthly_credit_ledger(
-                        member,
-                        plans,
-                        next_month_date,
-                        active_freeze_events
-                    )
-
+                         member,plans,next_month_date,active_freeze_events)
+                    
                     next_ledger = credit_ledgers[next_ledger_key]
 
+                    # Record the monthly grant only when the ledger is first created.
                     record_ledger_entry(
                         credit_ledger_entries,
                         next_ledger,
@@ -910,63 +978,69 @@ def process_commands(
                         "GRANT",
                         "MONTHLY_PLAN",
                         next_ledger["monthly_credits"]
-                    )
+                )
 
                 next_ledger = credit_ledgers[next_ledger_key]
 
                 # Preserve existing carry-forward credits if they have not expired.
                 valid_buckets = []
-
+                expired_buckets = []
+                ledger_entries = credit_ledger_entries
+                
                 for bucket in ledger["carry_forward_buckets"]:
                     expiry_date = calculate_carry_forward_expiry(
-                        bucket["created_date"]
-                    )
-
+                    bucket["created_date"]
+                )
                     if next_month_date <= expiry_date:
                         valid_buckets.append(bucket.copy())
                     else:
-                        record_ledger_entry(
-                            credit_ledger_entries,
-                            ledger,
-                            cycle_close_time,
-                            "EXPIRE",
-                            member_id,
-                            bucket["credits"]
-                        )
-
-                # Remove expired buckets from the current ledger.
+                        expired_buckets.append(bucket.copy())
+                    
+                # Remove all old carry-forward buckets from the current ledger.
                 ledger["carry_forward_buckets"] = []
+                    
+                # Record expired credits after removing them.
+                for bucket in expired_buckets:
+                    record_ledger_entry(
+                    ledger_entries,
+                    ledger,
+                    cycle_close_time,
+                    "EXPIRE",
+                    member_id,
+                    bucket["credits"]
+                    )
 
-                # Transfer valid old carry-forward buckets without changing their dates.
+                # Transfer valid old carry-forward credits to the next month.
                 for bucket in valid_buckets:
                     next_ledger["carry_forward_buckets"].append(bucket)
 
                     record_ledger_entry(
-                        credit_ledger_entries,
-                        next_ledger,
-                        cycle_close_time,
-                        "CARRY_FORWARD",
-                        member_id,
-                        bucket["credits"]
-                    )
+                        ledger_entries,
+                    next_ledger,
+                    cycle_close_time,
+                    "CARRY_FORWARD",
+                    member_id,
+                    bucket["credits"]
+                )
 
-                # Carry forward unused credits from the current month's grant.
+                 # Carry forward unused credits from the current month's grant.
                 carry_bucket = create_carry_forward_bucket(
                     ledger,
-                    billing_month
-                )
+                    billing_month )
 
                 if carry_bucket is not None:
                     next_ledger["carry_forward_buckets"].append(carry_bucket)
-
+                    
                     record_ledger_entry(
-                        credit_ledger_entries,
-                        next_ledger,
-                        cycle_close_time,
-                        "CARRY_FORWARD",
-                        member_id,
-                        carry_bucket["credits"]
-                    )
+                    ledger_entries,
+                    next_ledger,
+                    cycle_close_time,
+                    "CARRY_FORWARD",
+                    member_id,
+                    carry_bucket["credits"]
+                )
+
+
 
             # Assess interest on invoices that are still unpaid.
             # Any new interest is included in this month's invoice.
@@ -976,17 +1050,25 @@ def process_commands(
                     cycle_close_time,
                     billing_month
                 )
+
             # Generate one invoice for every member.
             for member_id, member in members.items():
                 ledger_key = (member_id, billing_month)
                 ledger = credit_ledgers[ledger_key]
 
-                plan_fee = calculate_membership_allowance(
-                    member, plans
-                )["plan_fee"]
+                plan_fee = monthly_plan_fees.get(
+                    ledger_key,
+                    calculate_membership_allowance(
+                        member, plans
+                    )["plan_fee"]
+                )
+
+                if member["plan"] == "DAY_PASS":
+                    plan_fee = 0
+
 
                 room_overage = ledger["overage_amount"]
-                                # Calculate desk charges from successful check-in days.
+                # Calculate desk charges from successful check-in days.
                 desk_days_used = len(
                     desk_checkin_days.get(ledger_key, set())
                 )
@@ -1024,6 +1106,9 @@ def process_commands(
                 for freeze in freeze_records:
                     if freeze["member_id"] != member_id:
                         continue
+                    # DAY_PASS has no monthly plan fee to waive.
+                    if member["plan"] == "DAY_PASS":
+                        continue
 
                     waiver_details = calculate_freeze_waiver(
                         freeze["monthly_plan_fee"],
@@ -1059,7 +1144,7 @@ def process_commands(
                     f"{billing_month.year}"
                     f"{billing_month.month:02d}"
                 )
-
+                
                 invoice = build_invoice_record(
                     invoice_id,
                     member_id,
